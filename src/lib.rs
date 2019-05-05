@@ -58,7 +58,7 @@ use std::str::{self, FromStr};
 
 use num_bigint::{BigInt, ParseBigIntError, Sign, ToBigInt};
 use num_integer::Integer;
-pub use traits::{FromPrimitive, Num, One, Signed, ToPrimitive, Zero};
+pub use traits::{FromPrimitive, Num, One, Pow, Signed, ToPrimitive, Zero};
 
 #[macro_use]
 mod macros;
@@ -518,6 +518,81 @@ impl BigDecimal {
         }
 
         return result;
+    }
+
+    #[inline]
+    pub fn root(&self, n: u64) -> BigDecimal {
+        if self.is_negative() {
+            unimplemented!()
+        }
+
+        if n.is_one() {
+            return self.clone();
+        }
+
+        // take estimate
+        let x_f64 = self.to_f64().unwrap();
+        let mut s = BigDecimal::from(x_f64.pow(1.0 / n as f64));
+        println!("initial estimate is: {}", s);
+
+        // turn n into bigdecimal
+        let nth = BigDecimal::from(n);
+
+        // get high precision version of self
+        let xhighpr = BigDecimal::new(&self.int_val * 100, self.scale + 2);
+        println!("self: {}", self);
+        println!("high prec self: {}", &xhighpr);
+
+        // calc eps
+        let eps = self.ulp().to_f64().unwrap() / (2 as f64 * n as f64 * x_f64);
+        println!("EPS is: {}", eps);
+
+        // loop
+        let test_max = 10;
+        let mut iter = 1;
+
+        while iter < test_max {
+            iter += 1;
+
+            let num = &s.pow_int(n - 1);
+
+            // TODO move this into it's own function
+            // let scale = &xhighpr.scale - num.scale;
+            // let mut c = impl_division(xhighpr.clone().int_val, &num.int_val, scale, &self.digits() + 2);
+
+            let mut c = &xhighpr / num;
+            println!("C step 1 is: {}", c);
+
+
+            c = &s - c;
+            println!("C step 2 is: {}", c);
+
+            //possibly missing precision step here?
+
+            c = c / &nth;
+            println!("C step 3 is: {}", c);
+
+            s = s - &c;
+            println!("new S is: {}", s);
+
+            if (c.to_f64().unwrap().abs() / s.to_f64().unwrap().abs()) < eps {
+                break;
+            }
+        }
+        s.with_prec(BigDecimal::from(eps).digits())
+    }
+
+    #[inline]
+    pub fn pow_int(&self, n: u64) -> BigDecimal {
+        // TODO: How to check for max n?
+        let foo = self.int_val.pow(n);
+        let new_scale = self.scale * n as i64;
+        BigDecimal::new(foo, new_scale)
+    }
+
+    #[inline]
+    pub fn ulp(&self) -> BigDecimal {
+        BigDecimal::new(BigInt::from(1), self.scale)
     }
 
     /// Compute the reciprical of the number: x<sup>-1</sup>
@@ -2625,6 +2700,47 @@ mod bigdecimal_tests {
         for &(x, y) in vals.iter() {
             let a = BigDecimal::from_str(x).unwrap().cbrt();
             let b = BigDecimal::from_str(y).unwrap();
+            assert_eq!(a, b);
+        }
+    }
+
+    #[test]
+    fn test_ulp() {
+        let vals = vec![
+            ("4.25", "0.01"),
+            ("1789", "1")
+        ];
+        for &(x, y) in vals.iter() {
+            let a = BigDecimal::from_str(x).unwrap().ulp();
+            let b = BigDecimal::from_str(y).unwrap();
+            assert_eq!(a, b);
+        }
+    }
+
+    #[test]
+    fn test_nth() {
+        let vals = vec![
+            ("81", 4, "3"),
+            ("81.25", 4, "3.0023121404"),
+        ];
+        for &(x, y, z) in vals.iter() {
+            let a = BigDecimal::from_str(x).unwrap().root(y);
+            let b = BigDecimal::from_str(z).unwrap();
+            assert_eq!(a, b);
+        }
+    }
+
+
+    #[test]
+    fn test_pow_int() {
+        let vals = vec![
+            ("3.00", 2, "9"),
+            ("3.25", 2, "10.5625"),
+            ("3.14989", 2, "9.9218070121")
+        ];
+        for &(x, y, z) in vals.iter() {
+            let a = BigDecimal::from_str(x).unwrap().pow_int(y);
+            let b = BigDecimal::from_str(z).unwrap();
             assert_eq!(a, b);
         }
     }
