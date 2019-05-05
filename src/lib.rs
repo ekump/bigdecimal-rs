@@ -548,7 +548,7 @@ impl BigDecimal {
         println!("EPS is: {}", eps);
 
         // loop
-        let test_max = 10;
+        let test_max = 1000;
         let mut iter = 1;
 
         while iter < test_max {
