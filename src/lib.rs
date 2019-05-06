@@ -531,63 +531,40 @@ impl BigDecimal {
         }
 
         // take estimate
-        let x_f64 = self.to_f64().unwrap();
-        let mut s = BigDecimal::from(x_f64.pow(1.0 / n as f64));
-        println!("initial estimate is: {}", s);
+        let self_f64 = self.to_f64().unwrap();
+        let mut result = BigDecimal::from(self_f64.pow(1.0 / n as f64));
 
-        // turn n into bigdecimal
-        let nth = BigDecimal::from(n);
+        let n_bigdec = BigDecimal::from(n);
 
         // get high precision version of self
-        let xhighpr = BigDecimal::new(&self.int_val * 100, self.scale + 2);
-        println!("self: {}", self);
-        println!("high prec self: {}", &xhighpr);
+        let self_highpr = BigDecimal::new(&self.int_val * 100, self.scale + 2);
 
-        // calc eps
-        let eps = self.ulp().to_f64().unwrap() / (2 as f64 * n as f64 * x_f64);
-        println!("EPS is: {}", eps);
+        // calculate epsilon
+        let epsilon = self.ulp().to_f64().unwrap() / (2 as f64 * n as f64 * self_f64);
 
-        // loop
-        let test_max = 1000;
-        let mut iter = 1;
+        loop {
+            let num = &result.pow_int(n - 1);
 
-        while iter < test_max {
-            iter += 1;
+            let mut correction = &self_highpr / num;
 
-            let num = &s.pow_int(n - 1);
+            correction = (&result - correction) / &n_bigdec;
 
-            // TODO move this into it's own function
-            // let scale = &xhighpr.scale - num.scale;
-            // let mut c = impl_division(xhighpr.clone().int_val, &num.int_val, scale, &self.digits() + 2);
+            result = result - &correction;
 
-            let mut c = &xhighpr / num;
-            println!("C step 1 is: {}", c);
-
-
-            c = &s - c;
-            println!("C step 2 is: {}", c);
-
-            //possibly missing precision step here?
-
-            c = c / &nth;
-            println!("C step 3 is: {}", c);
-
-            s = s - &c;
-            println!("new S is: {}", s);
-
-            if (c.to_f64().unwrap().abs() / s.to_f64().unwrap().abs()) < eps {
+            if (correction.to_f64().unwrap().abs() / result.to_f64().unwrap().abs()) < epsilon {
                 break;
             }
         }
-        s.with_prec(BigDecimal::from(eps).digits())
+
+        result.with_prec(BigDecimal::from(epsilon).digits())
     }
 
     #[inline]
     pub fn pow_int(&self, n: u64) -> BigDecimal {
         // TODO: How to check for max n?
-        let foo = self.int_val.pow(n);
+        let int_val = self.int_val.pow(n);
         let new_scale = self.scale * n as i64;
-        BigDecimal::new(foo, new_scale)
+        BigDecimal::new(int_val, new_scale)
     }
 
     #[inline]
@@ -2721,7 +2698,9 @@ mod bigdecimal_tests {
     fn test_nth() {
         let vals = vec![
             ("81", 4, "3"),
-            ("81.25", 4, "3.0023121404"),
+            ("81.25", 4, "3.002312140444423"),
+            ("128.128", 7, "2.000285591912482"),
+            ("0.0152399025", 2, ".12345"),
         ];
         for &(x, y, z) in vals.iter() {
             let a = BigDecimal::from_str(x).unwrap().root(y);
